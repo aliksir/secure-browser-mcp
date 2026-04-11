@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { BrowserMCPServer } from './server.js';
 
-process.stderr.write('playwright-browser-mcp v0.1.0\n');
+process.stderr.write('secure-browser-mcp v0.1.0\n');
 
 const server = new BrowserMCPServer();
 
@@ -10,7 +10,7 @@ async function main(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  process.stderr.write('Shutting down playwright-browser-mcp...\n');
+  process.stderr.write('Shutting down secure-browser-mcp...\n');
   await server.stop();
   process.exit(0);
 }

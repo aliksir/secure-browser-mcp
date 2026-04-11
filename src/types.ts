@@ -1,6 +1,6 @@
 /**
  * 共通型定義
- * playwright-browser-mcp の全モジュールで使用する型
+ * secure-browser-mcp の全モジュールで使用する型
  */
 
 /** インタラクティブ要素の情報 */

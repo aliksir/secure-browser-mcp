@@ -44,7 +44,7 @@ export class BrowserMCPServer {
 
   constructor() {
     this.server = new Server(
-      { name: 'playwright-browser-mcp', version: '0.1.0' },
+      { name: 'secure-browser-mcp', version: '0.1.0' },
       { capabilities: { tools: {} } },
     );
     this.setupHandlers();
@@ -968,7 +968,7 @@ export class BrowserMCPServer {
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    process.stderr.write('playwright-browser-mcp server started\n');
+    process.stderr.write('secure-browser-mcp server started\n');
   }
 
   async stop(): Promise<void> {
