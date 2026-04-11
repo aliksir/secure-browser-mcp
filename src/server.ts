@@ -228,6 +228,51 @@ export class BrowserMCPServer {
             description: 'Close all browser sessions.',
             inputSchema: { type: 'object', properties: {} },
           },
+          {
+            name: 'browser_batch',
+            description:
+              'Execute multiple browser actions in a single call. Reduces MCP round-trips. Actions run sequentially; stops on first error.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                actions: {
+                  type: 'array',
+                  description: 'Array of actions to execute sequentially',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      tool: {
+                        type: 'string',
+                        description:
+                          'Tool name (e.g. browser_navigate, browser_click, browser_get_state)',
+                      },
+                      args: {
+                        type: 'object',
+                        description: 'Arguments for the tool',
+                      },
+                    },
+                    required: ['tool'],
+                  },
+                },
+              },
+              required: ['actions'],
+            },
+          },
+          {
+            name: 'browser_evaluate',
+            description:
+              'Execute JavaScript on the current page and return the result. Useful for extracting data or checking page state.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                expression: {
+                  type: 'string',
+                  description: 'JavaScript expression to evaluate',
+                },
+              },
+              required: ['expression'],
+            },
+          },
         ],
       };
     });
@@ -266,6 +311,10 @@ export class BrowserMCPServer {
             return await this.browserCloseSession(safeArgs);
           case 'browser_close_all':
             return await this.browserCloseAll();
+          case 'browser_batch':
+            return await this.browserBatch(safeArgs);
+          case 'browser_evaluate':
+            return await this.browserEvaluate(safeArgs);
           default:
             return this.textResult(`Error: Unknown tool: ${name}`);
         }
@@ -773,6 +822,143 @@ export class BrowserMCPServer {
     this.pageToTabId.clear();
 
     return this.textResult(`Closed all sessions (${sessionCount} total)`);
+  }
+
+  // -------------------------------------------------------------------------
+  // バッチ操作・JS実行
+  // -------------------------------------------------------------------------
+
+  /** Tools allowed inside browser_batch (destructive/session tools excluded) */
+  private static readonly BATCH_ALLOWED_TOOLS = new Set([
+    'browser_navigate',
+    'browser_click',
+    'browser_type',
+    'browser_get_state',
+    'browser_screenshot',
+    'browser_scroll',
+    'browser_go_back',
+    'browser_get_html',
+    'browser_list_tabs',
+    'browser_switch_tab',
+    'browser_evaluate',
+  ]);
+
+  private async browserBatch(
+    args: Record<string, unknown>,
+  ): Promise<{ content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> }> {
+    const actions = args['actions'];
+    if (!Array.isArray(actions) || actions.length === 0) {
+      return this.textResult('Error: actions array is required and must not be empty');
+    }
+
+    const results: Array<{ tool: string; success: boolean; result: unknown }> = [];
+
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i] as Record<string, unknown>;
+      const tool = String(action['tool'] ?? '');
+      const toolArgs = (action['args'] ?? {}) as Record<string, unknown>;
+
+      if (!BrowserMCPServer.BATCH_ALLOWED_TOOLS.has(tool)) {
+        results.push({
+          tool,
+          success: false,
+          result: `Error: Tool "${tool}" is not allowed in batch. Allowed: ${[...BrowserMCPServer.BATCH_ALLOWED_TOOLS].join(', ')}`,
+        });
+        break;
+      }
+
+      try {
+        let toolResult: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> };
+
+        switch (tool) {
+          case 'browser_navigate':
+            toolResult = await this.browserNavigate(toolArgs);
+            break;
+          case 'browser_click':
+            toolResult = await this.browserClick(toolArgs);
+            break;
+          case 'browser_type':
+            toolResult = await this.browserType(toolArgs);
+            break;
+          case 'browser_get_state':
+            toolResult = await this.browserGetState(toolArgs);
+            break;
+          case 'browser_screenshot':
+            toolResult = await this.browserScreenshot(toolArgs);
+            break;
+          case 'browser_scroll':
+            toolResult = await this.browserScroll(toolArgs);
+            break;
+          case 'browser_go_back':
+            toolResult = await this.browserGoBack();
+            break;
+          case 'browser_get_html':
+            toolResult = await this.browserGetHtml(toolArgs);
+            break;
+          case 'browser_list_tabs':
+            toolResult = await this.browserListTabs();
+            break;
+          case 'browser_switch_tab':
+            toolResult = await this.browserSwitchTab(toolArgs);
+            break;
+          case 'browser_evaluate':
+            toolResult = await this.browserEvaluate(toolArgs);
+            break;
+          default:
+            toolResult = this.textResult(`Error: Unknown tool: ${tool}`);
+        }
+
+        const textContent = toolResult.content
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text)
+          .join('\n');
+        const hasError = textContent.startsWith('Error:');
+
+        results.push({ tool, success: !hasError, result: textContent });
+
+        if (hasError) break;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ tool, success: false, result: `Error: ${message}` });
+        break;
+      }
+    }
+
+    const summary = results
+      .map((r, i) => `[${i + 1}] ${r.tool}: ${r.success ? '✅' : '❌'} ${r.result}`)
+      .join('\n');
+
+    return this.textResult(
+      `Batch: ${results.length}/${actions.length} actions executed\n\n${summary}`,
+    );
+  }
+
+  private async browserEvaluate(
+    args: Record<string, unknown>,
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
+    const page = this.requireActivePage();
+    const expression = String(args['expression'] ?? '');
+
+    if (!expression) {
+      return this.textResult('Error: expression is required');
+    }
+
+    try {
+      const result = await page.evaluate((expr: string) => {
+        // eslint-disable-next-line no-eval
+        const value = eval(expr);
+        if (value === undefined) return 'undefined';
+        if (value === null) return 'null';
+        if (typeof value === 'object') return JSON.stringify(value, null, 2);
+        return String(value);
+      }, expression);
+
+      const maskedResult = maskSensitiveText(String(result));
+      return this.textResult(maskedResult);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return this.textResult(`Error: ${message}`);
+    }
   }
 
   // -------------------------------------------------------------------------
