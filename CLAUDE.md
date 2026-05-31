@@ -35,4 +35,4 @@ npm run dev
 - LLMのAPIキー不要（Claude Code自体が判断するため）
 - Python依存なし（Node.js のみで完結）
 - npm公開名は `secure-browser-mcp`（GitHubリポジトリ名も同じ）、ローカルフォルダ名は `playwright-browser-mcp`
-- npmの同名パッケージ `playwright-browser-mcp@1.0.0`（tkhoa87@gmail.com）は別人のもの。混同注意
+- npmの同名パッケージ `playwright-browser-mcp@1.0.0` は別人（npm 上の別作者）のもの。混同注意
