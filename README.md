@@ -26,6 +26,11 @@ English | [日本語](README.ja.md)
 
 \* @playwright/mcp itself has no telemetry, but does not mask sensitive data in responses passed to LLMs.
 
+## Requirements
+
+- Node.js 18+
+- Chromium (installed via `npx playwright install chromium`)
+
 ## Quick Start
 
 ### Install

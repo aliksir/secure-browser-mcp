@@ -25,6 +25,11 @@
 
 \* @playwright/mcp自体にテレメトリはないが、LLMに渡されるレスポンス内の機密データをマスクする機能はない。
 
+## 動作要件
+
+- Node.js 18+
+- Chromium（`npx playwright install chromium` でインストール）
+
 ## クイックスタート
 
 ### インストール
