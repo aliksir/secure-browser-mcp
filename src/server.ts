@@ -6,6 +6,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { chromium } from 'playwright';
 import type { Browser, BrowserContext, Page } from 'playwright';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { analyzeDom, clearIndexAttributes } from './dom-analyzer.js';
 import { SessionManager } from './session-manager.js';
 
@@ -339,11 +341,17 @@ export class BrowserMCPServer {
       if (this.browser) {
         await this.browser.close().catch(() => undefined);
       }
+      const downloadsPath =
+        process.env['BROWSER_DOWNLOADS_PATH'] || join(homedir(), 'Downloads');
       this.browser = await chromium.launch({
         headless: process.env['BROWSER_HEADLESS'] !== 'false',
+        downloadsPath,
       });
-      this.context = await this.browser.newContext();
+      this.context = await this.browser.newContext({
+        acceptDownloads: true,
+      });
       this.currentPage = await this.context.newPage();
+      this.attachDownloadHandler(this.currentPage);
 
       const sessionId = generateTabId(this.contextMap);
       this.currentSessionId = sessionId;
@@ -373,6 +381,17 @@ export class BrowserMCPServer {
       context: this.context,
       page: this.currentPage,
     };
+  }
+
+  private attachDownloadHandler(page: Page): void {
+    page.on('download', async (dl) => {
+      const dest = await dl.path();
+      if (dest) {
+        process.stderr.write(
+          `[neko-browser] download: ${dl.suggestedFilename()} -> ${dest}\n`,
+        );
+      }
+    });
   }
 
   private requireActivePage(): Page {
@@ -440,6 +459,7 @@ export class BrowserMCPServer {
     let page: Page;
     if (newTab) {
       page = await context.newPage();
+      this.attachDownloadHandler(page);
       const tabId = generateTabId(this.tabMap);
       this.tabMap.set(tabId, page);
       this.pageToTabId.set(page, tabId);
